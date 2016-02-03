@@ -1,3 +1,6 @@
+# Creates a mosaic by projecting images onto the ground (z=0 plane).
+# Author: Philip Salvaggio
+
 import csv
 import cv2
 import math
@@ -188,33 +191,41 @@ def create_mosaic(image_fnames,
   # Create the output image
   output_cols = int(math.ceil(max_x / gsd))
   output_rows = int(math.ceil(max_y / gsd))
-  output_image = np.zeros((output_rows, output_cols, 3), np.float64)
-  norm_image = np.zeros(output_image.shape[0:2], np.float64)
+  mosaic = np.zeros((output_rows, output_cols, 3), np.float64)
+  norm_image = np.zeros(mosaic.shape[0:2], np.float64)
 
   # Apply the image-to-ground perspective transformation to each image
   for i in range(0, len(ground_corners)):
     corners = np.int32(ground_corners[i] / gsd)
     pts1 = np.float32([[width,0], [0,0], [0, height], [width, height]])
     pts2 = np.float32(corners.transpose())
-    
+
+    offset = np.amin(pts2, axis=0)
+    size = np.amax(pts2, axis=0) - offset + 1    
+    pts2 -= offset
+
     im = cv2.imread(image_fnames[i], cv2.IMREAD_COLOR)
     homography = cv2.getPerspectiveTransform(pts1, pts2)
-    warped = cv2.warpPerspective(im, homography, (output_cols, output_rows))
-    output_image += warped
+    warped = cv2.warpPerspective(im, homography, (size[0,0], size[0,1]))
+    mosaic[offset[0,1]:offset[0,1]+size[0,1],
+           offset[0,0]:offset[0,0]+size[0,0]] += warped
 
     warped_ones = cv2.warpPerspective(
         np.ones(im.shape[0:2], np.float64), homography,
-        (output_cols, output_rows))
-    norm_image += warped_ones
+        (size[0,0], size[0,1]))
+    norm_image[offset[0,1]:offset[0,1]+size[0,1],
+               offset[0,0]:offset[0,0]+size[0,0]] += warped_ones
 
+  # Normalize to a constant brightness
   norm_image = np.maximum(norm_image, np.ones(norm_image.shape))
-  output_image /= norm_image[:,:,None]
+  mosaic /= norm_image[:,:,None]
 
   # Draw frame outlines
   for i in range(0, len(ground_corners)):
     corners = np.int32(ground_corners[i] / gsd)
-    cv2.polylines(output_image, [corners.transpose()], True, (0, 255, 0))
-  cv2.imwrite("output.png", output_image)
+    cv2.polylines(mosaic, [corners.transpose()], True, (0, 255, 0))
+
+  return mosaic
   
 
 if __name__ == '__main__':
@@ -249,4 +260,7 @@ if __name__ == '__main__':
   width, height = get_image_size(image_fnames[0])
   pixel_size = 0.035 / math.sqrt(width**2 + height**2)
   
-  create_mosaic(image_fnames, image_eo, focal_length, width, height, pixel_size)
+  mosaic = create_mosaic(image_fnames, image_eo, focal_length, width, height,
+                         pixel_size)
+
+  cv2.imwrite("output.png", mosaic)

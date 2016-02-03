@@ -250,6 +250,7 @@ if __name__ == '__main__':
   image_eo = np.array(image_eo)
   image_eo[:, 3:] *= math.pi / 180
 
+  # Perform Lat-Lon to local tangential transformation
   origin = np.mean(image_eo[:,0:2], axis=0)
   for i in range(0, image_eo.shape[0]):
     geocentric = lat_lon_to_geocentric(image_eo[i, 0:3])
